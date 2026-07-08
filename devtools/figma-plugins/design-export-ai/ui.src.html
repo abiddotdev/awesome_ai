@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ═══ Design tokens ═════════════════════════════════════
+       Share Sheet — light, warm, visual-first. The rendered
+       component is the hero; format + depth are chips under
+       it; one confident CTA closes the loop. JSON is a fold-
+       away detail, not the default view.
+    ─────────────────────────────────────────────────────────── */
+    :root {
+      --bg:            #f7f5f0;
+      --surface:       #ffffff;
+      --surface-2:     #f2efe7;
+      --stage-check:   rgba(38,36,32,0.035);
+      --line:          #ece6d8;
+      --line-strong:   #ddd4c0;
+
+      --ink-1:  #262420;
+      --ink-2:  #6b6656;
+      --ink-3:  #a39d8a;
+
+      --accent:       #a85a0a;
+      --accent-strong:#c9781f;
+      --accent-soft:  rgba(168,90,10,0.08);
+      --accent-line:  rgba(168,90,10,0.32);
+
+      --dot-comp:  #a85a0a;
+      --dot-text:  #4f7cc4;
+      --dot-vec:   #9a63b0;
+      --dot-shape: #8c8779;
+
+      --ok:  #3f8f47;
+      --err: #b8402a;
+
+      --f-ui:   -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+      --f-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+
+      --r-lg: 16px;
+      --r-md: 10px;
+      --r-sm: 7px;
+    }
+
+    html, body { background: var(--bg); }
+    body {
+      color: var(--ink-1);
+      font-family: var(--f-ui);
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { font-family: inherit; }
+    button:focus-visible, select:focus-visible {
+      outline: 2px solid var(--accent-line);
+      outline-offset: 1px;
+      border-radius: var(--r-sm);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ── Progress bar ─────────────────────────────────────── */
+    #progress-bar {
+      height: 3px;
+      flex-shrink: 0;
+      background: transparent;
+    }
+    #progress-bar.scanning {
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      background-size: 200% 100%;
+      animation: scan 1.3s linear infinite;
+    }
+    @keyframes scan {
+      0%   { background-position: 150% 0; }
+      100% { background-position: -150% 0; }
+    }
+
+    /* ── Sheet ────────────────────────────────────────────── */
+    .sheet {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 14px 16px 16px;
+      overflow: hidden;
+    }
+
+    /* ── Compose header (back button, result mode only) ───── */
+    #compose-header {
+      display: flex;
+      align-items: center;
+      height: 26px;
+      flex-shrink: 0;
+    }
+    #compose-header[hidden] { display: none; }
+
+    #back-btn {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    #back-btn:hover { border-color: var(--accent-line); color: var(--accent); }
+
+    /* ── Stage ────────────────────────────────────────────── */
+    .stage-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 120px;
+      display: flex;
+    }
+
+    #stage {
+      flex: 1;
+      position: relative;
+      border-radius: var(--r-lg);
+      background-color: var(--surface-2);
+      background-image:
+        linear-gradient(45deg, var(--stage-check) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--stage-check) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--stage-check) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--stage-check) 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      overflow: hidden;
+    }
+
+    .stage-layer {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 20px;
+      text-align: center;
+    }
+    .stage-layer[hidden] { display: none; }
+
+    #stage-empty .stage-icon { color: var(--ink-3); }
+    #stage-empty[data-ready="true"] .stage-icon { color: var(--accent); }
+    .stage-text {
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--ink-3);
+      max-width: 24ch;
+    }
+
+    #stage-loading .spinner {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2.5px solid var(--line-strong);
+      border-top-color: var(--accent);
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .stage-loading-text {
+      font-family: var(--f-mono);
+      font-size: 11px;
+      color: var(--ink-2);
+    }
+
+    #stage-error .stage-icon { color: var(--err); }
+    .stage-error-text {
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--err);
+      max-width: 26ch;
+    }
+
+    /* display/align/justify come from .stage-layer — redeclaring them here at
+       ID specificity would beat .stage-layer[hidden]'s display:none and the
+       layer would stay visible (and painted on top) even while "hidden". */
+    #stage-media {
+      padding: 22px;
+    }
+    #stage-media img, #stage-media svg {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 12px 28px rgba(38,36,32,0.16));
+    }
+
+    .stage-badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-family: var(--f-mono);
+      font-size: 10px;
+      font-weight: 600;
+      background: rgba(38,36,32,0.82);
+      color: #fff;
+      padding: 3px 8px;
+      border-radius: 999px;
+      letter-spacing: 0.01em;
+    }
+    .stage-badge[hidden] { display: none; }
+
+    #fmt-switch {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    #fmt-switch[hidden] { display: none; }
+    #fmt-switch button {
+      border: none;
+      background: none;
+      padding: 4px 10px;
+      font-family: var(--f-mono);
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--ink-2);
+      cursor: pointer;
+    }
+    #fmt-switch button.active { background: var(--accent); color: #fff; }
+    #fmt-switch button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ── Caption ──────────────────────────────────────────── */
+    .caption { flex-shrink: 0; text-align: center; }
+    #caption-name {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--ink-1);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #caption-name.muted { color: var(--ink-3); font-weight: 400; }
+    #caption-meta {
+      margin-top: 3px;
+      font-family: var(--f-mono);
+      font-size: 11px;
+      color: var(--ink-3);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tags {
+      margin-top: 7px;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .tags[hidden] { display: none; }
+    .tag {
+      font-family: var(--f-mono);
+      font-size: 9.5px;
+      color: var(--ink-2);
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      padding: 2px 7px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    /* ── Variant picker ───────────────────────────────────── */
+    #variant-row {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--ink-2);
+    }
+    #variant-row[hidden] { display: none; }
+    #variant-select {
+      background: var(--surface);
+      color: var(--ink-1);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      max-width: 160px;
+    }
+    #variant-select:hover { border-color: var(--accent-line); }
+
+    /* ── Chips ────────────────────────────────────────────── */
+    #chips {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    #chips[data-disabled="true"] { opacity: 0.4; pointer-events: none; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-2);
+      font-size: 11.5px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .chip:hover { border-color: var(--line-strong); }
+    .chip.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); font-weight: 600; }
+
+    #chip-depth { gap: 8px; cursor: default; }
+    .depth-label {
+      font-size: 11.5px;
+      color: var(--ink-2);
+    }
+    .depth-btn {
+      border: none;
+      background: none;
+      color: var(--ink-2);
+      font-family: var(--f-mono);
+      font-size: 12px;
+      font-weight: 700;
+      width: 12px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .depth-btn:hover { color: var(--accent); }
+    #depth-val { font-family: var(--f-mono); font-size: 11px; font-weight: 600; min-width: 22px; text-align: center; }
+
+    /* ── Data disclosure ──────────────────────────────────── */
+    #data-toggle {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--ink-3);
+      font-size: 11.5px;
+      cursor: pointer;
+      padding: 1px 0;
+    }
+    #data-toggle[hidden] { display: none; }
+    #data-toggle:hover { color: var(--ink-2); }
+    #data-toggle .chevron { font-size: 9px; transition: transform 0.15s; }
+    #data-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+    #data-pane {
+      flex-shrink: 0;
+      max-height: 130px;
+      overflow-y: auto;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      padding: 8px 10px;
+      font-family: var(--f-mono);
+      font-size: 10.5px;
+      line-height: 1.6;
+      color: var(--ink-2);
+      white-space: pre;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+    #data-pane[hidden] { display: none; }
+    #data-pane::-webkit-scrollbar { width: 4px; }
+    #data-pane::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 2px; }
+    #data-pane .jk { color: var(--accent); font-weight: 600; }
+    #data-pane .js { color: #9a5f9e; }
+    #data-pane .jn { color: #b5772a; }
+    #data-pane .jb { color: #4f7cc4; }
+    #data-pane .jl { color: var(--err); }
+
+    /* ── CTA area ─────────────────────────────────────────── */
+    .cta-area {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-top: auto;
+    }
+
+    #cta-primary {
+      height: 44px;
+      border-radius: var(--r-md);
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      position: relative;
+    }
+    #cta-primary:hover:not(:disabled) { background: var(--accent-strong); }
+    #cta-primary:active:not(:disabled) { transform: scale(0.99); }
+    #cta-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    #cta-primary[data-loading] .cta-label { visibility: hidden; }
+    #cta-primary[data-loading] .cta-spinner { display: block; }
+    .cta-spinner {
+      display: none;
+      position: absolute;
+      width: 15px; height: 15px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    .cta-link {
+      background: none;
+      border: none;
+      color: var(--ink-3);
+      font-size: 12px;
+      text-align: center;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+      padding: 2px;
+    }
+    .cta-link[hidden] { display: none; }
+    .cta-link:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+
+<div class="sheet">
+
+  <div id="compose-header" hidden>
+    <button id="back-btn" type="button" aria-label="Start over">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+        <path d="M10 3 5 8l5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="stage-wrap">
+    <div id="stage">
+      <div class="stage-layer" id="stage-empty" data-ready="false">
+        <span class="stage-icon" id="stage-icon"></span>
+        <span class="stage-text" id="stage-text">Select a layer in Figma to begin</span>
+      </div>
+      <div class="stage-layer" id="stage-loading" hidden>
+        <div class="spinner"></div>
+        <span class="stage-loading-text" id="stage-loading-text">exporting…</span>
+      </div>
+      <div class="stage-layer" id="stage-error" hidden>
+        <span class="stage-icon">
+          <svg width="30" height="30" viewBox="0 0 34 34" fill="none">
+            <path d="M17 4 30 28H4L17 4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M17 14v6M17 23v.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="stage-error-text" id="stage-error-text"></span>
+      </div>
+      <div class="stage-layer" id="stage-media" hidden></div>
+      <span class="stage-badge" id="stage-badge" hidden></span>
+      <div id="fmt-switch" hidden>
+        <button type="button" id="fmt-svg" data-fmt="svg">SVG</button>
+        <button type="button" id="fmt-png" data-fmt="png">PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <div id="caption-name" class="muted">Nothing selected</div>
+    <div id="caption-meta"></div>
+    <div class="tags" id="tags-row" hidden></div>
+  </div>
+
+  <div id="variant-row" hidden>
+    <span>Variant</span>
+    <select id="variant-select"></select>
+  </div>
+
+  <div id="chips" data-disabled="true">
+    <button type="button" class="chip" id="chip-png">▣ PNG</button>
+    <button type="button" class="chip" id="chip-svg">◇ SVG</button>
+    <button type="button" class="chip" id="chip-tokens">◆ Tokens</button>
+    <div class="chip" id="chip-depth">
+      <span class="depth-label">Depth</span>
+      <button type="button" class="depth-btn" id="depth-dec" aria-label="Shallower">−</button>
+      <span id="depth-val">Full</span>
+      <button type="button" class="depth-btn" id="depth-inc" aria-label="Deeper">+</button>
+    </div>
+  </div>
+
+  <button type="button" id="data-toggle" hidden aria-expanded="false">
+    <span id="data-toggle-label">View JSON</span><span class="chevron">▾</span>
+  </button>
+  <pre id="data-pane" hidden></pre>
+
+  <div class="cta-area">
+    <button type="button" id="cta-primary" disabled>
+      <div class="cta-spinner"></div>
+      <span class="cta-label" id="cta-primary-label">Export</span>
+    </button>
+    <button type="button" class="cta-link" id="cta-all" hidden>Export all variants</button>
+    <button type="button" class="cta-link" id="cta-download" hidden>Download .json</button>
+  </div>
+
+</div>
+
+<script src="ui.js"></script>
+</body>
+</html>
