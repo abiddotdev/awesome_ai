@@ -414,7 +414,8 @@ function renderResult(bundle: ExportBundle | ComponentBundle) {
 
   inspTabs.hidden = false;
 
-  ctaPrimaryLabel.textContent = "Copy";
+  const lineCount = json.split("\n").length;
+  ctaPrimaryLabel.textContent = `Copy (${formatBytes(json.length)}, ${lineCount} line${lineCount !== 1 ? "s" : ""})`;
   ctaPrimary.disabled = false;
   ctaAll.hidden = true;
   ctaDownload.hidden = false;
