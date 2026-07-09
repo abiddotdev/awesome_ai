@@ -25,7 +25,7 @@ The plugin is now installed. It shows up under **Plugins → Development → Des
 3. Optional: adjust the options (see below).
 4. Click **Export selection** — or **Export component** if you selected a component, instance, or component set and want every variant and variable mode included.
 5. Review the preview.
-6. Click **Copy JSON** (primary action) or **Download .json**.
+6. Click **Copy** (primary action) or **Download json**.
 
 If you selected a component set, a variant picker appears in the target row — choose one variant, or **All variants** to run the same export as the **Export component** button.
 

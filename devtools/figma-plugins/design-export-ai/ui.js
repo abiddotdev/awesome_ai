@@ -1,6 +1,7 @@
 "use strict";
 /// <reference path="./types.ts" />
 // ── Elements ──────────────────────────────────────────────
+const sheetEl = document.querySelector(".sheet");
 const progressBar = document.getElementById("progress-bar");
 const composeHeader = document.getElementById("compose-header");
 const backBtn = document.getElementById("back-btn");
@@ -28,8 +29,18 @@ const chipTokens = document.getElementById("chip-tokens");
 const depthDec = document.getElementById("depth-dec");
 const depthInc = document.getElementById("depth-inc");
 const depthVal = document.getElementById("depth-val");
-const dataToggle = document.getElementById("data-toggle");
-const dataToggleLabel = document.getElementById("data-toggle-label");
+const inspTabs = document.getElementById("insp-tabs");
+const inspLabel = document.getElementById("insp-label");
+const inspTabTree = document.getElementById("insp-tab-tree");
+const inspTabJson = document.getElementById("insp-tab-json");
+const inspJsonSize = document.getElementById("insp-json-size");
+const treePanel = document.getElementById("tree-panel");
+const treeVariantSelect = document.getElementById("tree-variant-select");
+const treeList = document.getElementById("tree-list");
+const treeResizer = document.getElementById("tree-resizer");
+const treeProps = document.getElementById("tree-props");
+const treePropsLabel = document.getElementById("tree-props-label");
+const treePropsBody = document.getElementById("tree-props-body");
 const dataPane = document.getElementById("data-pane");
 const ctaPrimary = document.getElementById("cta-primary");
 const ctaPrimaryLabel = document.getElementById("cta-primary-label");
@@ -44,6 +55,7 @@ let errorMessage = null;
 let currentBundle = null;
 let loadingText = "exporting…";
 let lastVariantIndex = null;
+let activeInspTab = null;
 let displayAssets = null;
 let previewLoading = false;
 // Frozen at the moment Export is pressed, so the result caption doesn't
@@ -179,6 +191,17 @@ function setStageLayer(layer) {
     stageErrorEl.hidden = layer !== "error";
     stageMedia.hidden = layer !== "media";
 }
+function resetInsp() {
+    activeInspTab = null;
+    inspTabTree.classList.remove("active");
+    inspTabJson.classList.remove("active");
+    inspTabTree.setAttribute("aria-expanded", "false");
+    inspTabJson.setAttribute("aria-expanded", "false");
+    inspTabs.hidden = true;
+    treePanel.hidden = true;
+    dataPane.hidden = true;
+    sheetEl.classList.remove("json-expanded");
+}
 function render() {
     composeHeader.hidden = mode !== "result";
     chipsEl.dataset.disabled = mode === "idle" ? "false" : "true";
@@ -196,10 +219,9 @@ function render() {
         tagsRow.hidden = true;
         tagsRow.innerHTML = "";
         variantRow.hidden = true;
-        dataToggle.hidden = true;
-        dataPane.hidden = true;
+        resetInsp();
         ctaPrimary.disabled = true;
-        ctaPrimaryLabel.textContent = "Export";
+        ctaPrimaryLabel.textContent = "Export Screen";
         ctaAll.hidden = true;
         ctaDownload.hidden = true;
         return;
@@ -240,12 +262,11 @@ function render() {
         tagsRow.hidden = true;
         tagsRow.innerHTML = "";
         renderVariantPicker();
-        dataToggle.hidden = true;
-        dataPane.hidden = true;
+        resetInsp();
         ctaPrimary.disabled = false;
-        ctaPrimaryLabel.textContent = "Export";
+        ctaPrimaryLabel.textContent = "Export Screen";
         ctaAll.hidden = !selection.isComponent;
-        ctaAll.textContent = "Export all variants";
+        ctaAll.textContent = "Export component for library";
         ctaDownload.hidden = true;
         return;
     }
@@ -255,8 +276,7 @@ function render() {
         stageLoadingText.textContent = loadingText;
         stageBadge.hidden = true;
         fmtSwitch.hidden = true;
-        dataToggle.hidden = true;
-        dataPane.hidden = true;
+        resetInsp();
         ctaPrimary.dataset.loading = "true";
         ctaPrimary.disabled = true;
         ctaAll.hidden = true;
@@ -318,16 +338,25 @@ function renderResult(bundle) {
         stageMedia.innerHTML = "";
         fmtSwitch.hidden = true;
     }
-    // Data pane
+    // JSON pane
     const json = JSON.stringify(bundle, null, 2);
     const LIMIT = 8000;
     const truncated = json.length > LIMIT;
     dataPane.innerHTML = highlight(truncated
         ? json.slice(0, LIMIT) + "\n\n// … truncated — use Download for full output"
         : json);
-    dataToggleLabel.textContent = `View JSON · ${formatBytes(json.length)}`;
-    dataToggle.hidden = false;
-    ctaPrimaryLabel.textContent = "Copy JSON";
+    inspJsonSize.textContent = `(${formatBytes(json.length)})`;
+    // Tree pane
+    if (isComp) {
+        populateTreeVariantSelect(bundle.variants);
+    }
+    else {
+        treeVariantSelect.hidden = true;
+        treeVariantSelect.innerHTML = "";
+        renderTree(bundle.tree);
+    }
+    inspTabs.hidden = false;
+    ctaPrimaryLabel.textContent = "Copy";
     ctaPrimary.disabled = false;
     ctaAll.hidden = true;
     ctaDownload.hidden = false;
@@ -386,12 +415,188 @@ fmtSvgBtn.addEventListener("click", () => { if (!fmtSvgBtn.disabled)
     showPreview("svg"); });
 fmtPngBtn.addEventListener("click", () => { if (!fmtPngBtn.disabled)
     showPreview("png"); });
-// ── Data disclosure ──────────────────────────────────────
-dataToggle.addEventListener("click", () => {
-    const expanded = dataToggle.getAttribute("aria-expanded") === "true";
-    dataToggle.setAttribute("aria-expanded", String(!expanded));
-    dataPane.hidden = expanded;
+// ── Inspector (Tree / JSON tabs) ──────────────────────────
+function collapseInsp() {
+    activeInspTab = null;
+    inspTabTree.classList.remove("active");
+    inspTabJson.classList.remove("active");
+    inspTabTree.setAttribute("aria-expanded", "false");
+    inspTabJson.setAttribute("aria-expanded", "false");
+    treePanel.hidden = true;
+    dataPane.hidden = true;
+    sheetEl.classList.remove("json-expanded");
+}
+function openInspTab(tab) {
+    activeInspTab = tab;
+    inspTabTree.classList.toggle("active", tab === "tree");
+    inspTabJson.classList.toggle("active", tab === "json");
+    inspTabTree.setAttribute("aria-expanded", String(tab === "tree"));
+    inspTabJson.setAttribute("aria-expanded", String(tab === "json"));
+    treePanel.hidden = tab !== "tree";
+    dataPane.hidden = tab !== "json";
+    sheetEl.classList.add("json-expanded");
+}
+inspLabel.addEventListener("click", () => openInspTab("tree"));
+inspTabTree.addEventListener("click", () => {
+    if (activeInspTab === "tree")
+        collapseInsp();
+    else
+        openInspTab("tree");
 });
+inspTabJson.addEventListener("click", () => {
+    if (activeInspTab === "json")
+        collapseInsp();
+    else
+        openInspTab("json");
+});
+function dotClassForType(type) {
+    if (type === "TEXT")
+        return "dot-text";
+    if (type === "VECTOR" || type === "BOOLEAN_OPERATION")
+        return "dot-vec";
+    if (type === "COMPONENT" || type === "COMPONENT_SET" || type === "INSTANCE")
+        return "dot-comp";
+    return "dot-shape";
+}
+function renderTreeProps(node) {
+    treePropsLabel.textContent = `Properties · ${node.name}`;
+    treePropsBody.innerHTML = "";
+    const entries = [];
+    if (node.characters !== undefined)
+        entries.push(["characters", JSON.stringify(node.characters)]);
+    Object.entries(node.css).forEach(([k, v]) => { if (v !== undefined)
+        entries.push([k, v]); });
+    if (node.fills)
+        entries.push(["fills", `${node.fills.length} fill${node.fills.length !== 1 ? "s" : ""}`]);
+    if (entries.length === 0) {
+        entries.push(["—", "no resolved properties"]);
+    }
+    entries.forEach(([k, v]) => {
+        const row = document.createElement("div");
+        row.className = "tree-prop-row";
+        const kEl = document.createElement("span");
+        kEl.className = "k";
+        kEl.textContent = k;
+        const vEl = document.createElement("span");
+        vEl.className = "v";
+        vEl.textContent = v;
+        vEl.title = v;
+        row.appendChild(kEl);
+        row.appendChild(vEl);
+        treePropsBody.appendChild(row);
+    });
+}
+// Layers 1-5 (depth 0-4) start expanded; a node's children only start
+// collapsed once that node itself is at layer 5 (depth 4) or deeper.
+const DEFAULT_EXPAND_DEPTH = 4;
+function buildTreeRow(node, depth, hasChildren) {
+    const row = document.createElement("div");
+    row.className = "tree-row";
+    row.style.paddingLeft = `${4 + depth * 16}px`;
+    const caret = document.createElement("span");
+    caret.className = "tree-caret";
+    if (hasChildren) {
+        caret.classList.add("has-children");
+        caret.textContent = "▾";
+    }
+    row.appendChild(caret);
+    const dot = document.createElement("span");
+    dot.className = `tree-dot ${dotClassForType(node.type)}`;
+    row.appendChild(dot);
+    const nameEl = document.createElement("span");
+    nameEl.className = "tree-row-name";
+    nameEl.textContent = node.name;
+    row.appendChild(nameEl);
+    const typeEl = document.createElement("span");
+    typeEl.className = "tree-row-type";
+    typeEl.textContent = node.type;
+    row.appendChild(typeEl);
+    row.addEventListener("click", () => {
+        treeList.querySelectorAll(".tree-row.sel").forEach((r) => r.classList.remove("sel"));
+        row.classList.add("sel");
+        renderTreeProps(node);
+    });
+    return row;
+}
+function renderTree(root) {
+    treeList.innerHTML = "";
+    let firstRow = null;
+    function walk(node, depth, container) {
+        const hasChildren = !!(node.children && node.children.length);
+        const row = buildTreeRow(node, depth, hasChildren);
+        if (!firstRow)
+            firstRow = row;
+        container.appendChild(row);
+        if (hasChildren) {
+            const childWrap = document.createElement("div");
+            childWrap.className = "tree-children";
+            childWrap.hidden = depth >= DEFAULT_EXPAND_DEPTH;
+            const caret = row.querySelector(".tree-caret");
+            caret.classList.toggle("collapsed", childWrap.hidden);
+            caret.addEventListener("click", (e) => {
+                e.stopPropagation();
+                childWrap.hidden = !childWrap.hidden;
+                caret.classList.toggle("collapsed", childWrap.hidden);
+            });
+            node.children.forEach((child) => walk(child, depth + 1, childWrap));
+            container.appendChild(childWrap);
+        }
+    }
+    walk(root, 0, treeList);
+    if (firstRow) {
+        firstRow.classList.add("sel");
+        renderTreeProps(root);
+    }
+}
+function populateTreeVariantSelect(variants) {
+    treeVariantSelect.innerHTML = "";
+    variants.forEach((v, i) => {
+        const opt = document.createElement("option");
+        opt.value = String(i);
+        opt.textContent = v.name;
+        treeVariantSelect.appendChild(opt);
+    });
+    treeVariantSelect.hidden = variants.length < 2;
+    treeVariantSelect.selectedIndex = 0;
+    renderTree(variants[0].tree);
+}
+treeVariantSelect.addEventListener("change", () => {
+    if (!currentBundle || !("variants" in currentBundle))
+        return;
+    renderTree(currentBundle.variants[treeVariantSelect.selectedIndex].tree);
+});
+// ── Tree / properties resizer ─────────────────────────────
+const TREE_PROPS_MIN = 32;
+const TREE_LIST_MIN = 32;
+let treePropsHeight = 114;
+treeProps.style.height = `${treePropsHeight}px`;
+let resizeStartY = 0;
+let resizeStartHeight = 0;
+treeResizer.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    resizeStartY = e.clientY;
+    resizeStartHeight = treeProps.getBoundingClientRect().height;
+    treeResizer.classList.add("dragging");
+    treeResizer.setPointerCapture(e.pointerId);
+    document.body.style.userSelect = "none";
+});
+treeResizer.addEventListener("pointermove", (e) => {
+    if (!treeResizer.classList.contains("dragging"))
+        return;
+    const panelHeight = treePanel.getBoundingClientRect().height;
+    const resizerHeight = treeResizer.getBoundingClientRect().height;
+    const selectHeight = treeVariantSelect.hidden ? 0 : treeVariantSelect.getBoundingClientRect().height + 7;
+    const maxPropsHeight = Math.max(TREE_PROPS_MIN, panelHeight - resizerHeight - selectHeight - TREE_LIST_MIN);
+    const delta = resizeStartY - e.clientY;
+    treePropsHeight = Math.min(maxPropsHeight, Math.max(TREE_PROPS_MIN, resizeStartHeight + delta));
+    treeProps.style.height = `${treePropsHeight}px`;
+});
+function stopResizing() {
+    treeResizer.classList.remove("dragging");
+    document.body.style.userSelect = "";
+}
+treeResizer.addEventListener("pointerup", stopResizing);
+treeResizer.addEventListener("pointercancel", stopResizing);
 // ── CTA actions ──────────────────────────────────────────
 ctaPrimary.addEventListener("click", () => {
     if (mode === "idle") {

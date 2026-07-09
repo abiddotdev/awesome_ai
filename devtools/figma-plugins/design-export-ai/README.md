@@ -49,7 +49,7 @@ Then import `manifest.json` as above.
 2. Select a node (frame, component, instance, vector, etc.).
 3. Run the plugin: **Plugins → DesignExport AI**.
 4. Choose options and click **Export selection**, or **Export component** for a component/instance.
-5. Review the preview, then **Copy JSON** or **Download .json**.
+5. Review the preview, then **Copy** or **Download json**.
 
 ---
 
