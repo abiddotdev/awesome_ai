@@ -232,7 +232,8 @@ function isVariableAlias(v: unknown): v is VariableAlias {
 function resolveVariableValue(value: unknown, type: string): string {
   if (type === "COLOR" && typeof value === "object" && value !== null && !isVariableAlias(value)) {
     const c = value as RGBA;
-    return rgbToHex(c.r, c.g, c.b);
+    const hex = rgbToHex(c.r, c.g, c.b);
+    return c.a < 1 ? hexToRgba(hex, c.a) : hex;
   }
   if (typeof value === "number") return String(value);
   if (typeof value === "boolean") return String(value);
