@@ -85,6 +85,24 @@ r = client.chat.completions.create(
 print(r.choices[0].message.content)   # → "Hello, Abidh!" — tool round never visible
 ```
 
+## Tokens: what injection saves — and what it doesn't
+
+**It saves tool management, not tokens.** The schemas are still sent to the
+model on every request — by the proxy instead of the client — so upstream
+billing is unchanged (and each tool round re-sends the full conversation,
+exactly as a client-side loop would). What disappears is the client
+machinery: schemas per request, parsing `tool_calls`, executing functions,
+appending messages, looping, holding service credentials.
+
+**Caching caveat:** providers prompt-cache by exact prefix, and `tools` sits
+at the very front of that prefix (before system and messages). A stable tool
+list keeps the whole request cache-warm; reshuffling tools per request
+invalidates the cache for the *entire* conversation — often a net loss.
+That is why `injectTools()` emits tools in **sorted name order** instead of
+Go map order (which is randomized per iteration, so it would differ
+request-to-request). If you do exercise #3, select per *stable traffic
+class* (agent type, feature area), not per individual request.
+
 ## Architecture
 
 One binary, one file. Six building blocks:
@@ -232,8 +250,10 @@ boundary of the technique.
 2. **Dynamic definitions** — load tool definitions from a JSON file or HTTP
    endpoint at startup; this is what makes injection *dynamic* instead of
    compile-time.
-3. **Per-request selection** — which tools get injected based on client/API
-   key/path; the proxy becomes a policy point.
+3. **Per-class selection** — which tools get injected based on client/API
+   key/path; the proxy becomes a policy point. Keep the selection **stable
+   per traffic class**: per-request selection breaks the prompt-cache prefix
+   (see Tokens above) and can cost more than it saves.
 4. **Force `stream:false`** — when tools are attached, rewrite the flag in the
    body (3 lines with the splice machinery) so the loop always works.
 5. **Usage across rounds** — sum `usage` tokens from every buffered round.

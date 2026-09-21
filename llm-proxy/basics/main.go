@@ -28,6 +28,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -373,9 +374,18 @@ func injectTools(body []byte) ([]byte, error) {
 	if _, ok := m["messages"]; !ok {
 		return body, nil
 	}
-	// Build the OpenAI function-tool wire format.
+	// Build the OpenAI function-tool wire format. Sorted name order on
+	// purpose: tools sit at the FRONT of the prompt-cache prefix, and Go map
+	// iteration is randomized per iteration — unsorted would shuffle the
+	// request bytes and break upstream prompt caching request-to-request.
+	names := make([]string, 0, len(toolRegistry))
+	for name := range toolRegistry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	add := make([]json.RawMessage, 0, len(toolRegistry))
-	for _, t := range toolRegistry {
+	for _, name := range names {
+		t := toolRegistry[name]
 		add = append(add, json.RawMessage(fmt.Sprintf(
 			`{"type":"function","function":{"name":%q,"description":%q,"parameters":%s}}`,
 			t.Name, t.Description, t.Schema)))
