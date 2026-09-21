@@ -72,6 +72,8 @@ curl -s http://localhost:8080/v1/chat/completions \
 - top-level `x_llm_proxy: {"tools_executed": true}` in the response body
 - proxy log shows the round, e.g. `round 1: tool byebye → "Bye bye! See you soon."`
   followed by the closing `access ... rounds=1` line
+- on **streaming** requests the opposite is true: no proxy tools are attached,
+  signaled by `X-Llm-Proxy-Tools: skipped-streaming` (see the boundary note below)
 
 Any OpenAI SDK works the same way:
 
@@ -198,9 +200,12 @@ client                    proxy                              upstream
    │ ◄─ [DONE]              │ the upstream via request context  │
 ```
 
-Tool definitions are *not* injected on streaming requests — if the model calls
-a tool, `tool_calls` chunks stream to the client as-is. This is the documented
-boundary of the technique.
+Tool definitions are *not* injected on streaming requests — if the client
+registers its own tools, `tool_calls` chunks stream to the client as-is and
+only the client can answer them. The proxy makes this boundary visible:
+streaming chat responses carry `X-Llm-Proxy-Tools: skipped-streaming` (and
+the access log says `tools_skipped`), so "the proxy ignored my tools" is
+observable instead of silent. Streaming = bring your own tools.
 
 ### All other cases
 
@@ -209,6 +214,7 @@ boundary of the technique.
 | `GET /v1/models` | plain passthrough (SDKs probe this on init) |
 | non-streaming plain answer | buffered, delivered as-is |
 | non-streaming answer after proxy-executed tool rounds | stamped: `X-Llm-Proxy-Tools: executed` header + `x_llm_proxy.tools_executed:true` body field |
+| streaming request (proxy tools **not** attached) | passthrough, stamped: `X-Llm-Proxy-Tools: skipped-streaming` header + `tools_skipped` in the access log |
 | `finish_reason:"tool_calls"` calling a **foreign** (client-registered) tool | delivered to client untouched — only the client can answer those |
 | tool-call round but `maxToolRounds` (3) already spent | delivered as-is |
 | tool execution error | becomes the tool-message content ("tool hello failed: …") so the model can recover |

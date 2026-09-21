@@ -205,8 +205,12 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		if probe.Stream {
 			// Streaming path: pass bytes through with a flush per write.
 			// No tool interception — tool_calls chunks stream to the client as-is.
+			// Proxy tools were NOT attached (interception needs the buffered whole
+			// response), so say so: the header makes the skip visible to client
+			// devs, tools_skipped makes it countable in the access log.
+			w.Header().Set("X-Llm-Proxy-Tools", "skipped-streaming")
 			streamBack(w, resp)
-			logAccess(r, start, resp.StatusCode, detail+" stream")
+			logAccess(r, start, resp.StatusCode, detail+" stream tools_skipped")
 			return
 		}
 
