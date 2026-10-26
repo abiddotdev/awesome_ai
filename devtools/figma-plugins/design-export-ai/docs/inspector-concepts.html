@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>DesignExport AI — Inspector tab concepts (expanded)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:     #f7f5f0;
+    --ink-1:  #262420;
+    --ink-2:  #6b6656;
+    --ink-3:  #a39d8a;
+    --accent: #a85a0a;
+    --mono:   ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans:   -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15161a; --ink-1: #eae7e0; --ink-2: #a6a297; --ink-3: #706c62; --accent: #f0a94a; }
+  }
+  :root[data-theme="dark"]  { --bg: #15161a; --ink-1: #eae7e0; --ink-2: #a6a297; --ink-3: #706c62; --accent: #f0a94a; }
+  :root[data-theme="light"] { --bg: #f7f5f0; --ink-1: #262420; --ink-2: #6b6656; --ink-3: #a39d8a; --accent: #a85a0a; }
+
+  html, body { background: var(--bg); }
+  body { color: var(--ink-1); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+  }
+
+  .page-head { max-width: 1180px; margin: 0 auto; padding: 32px 20px 8px; }
+  .page-head .kicker {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600;
+  }
+  .page-head p { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+
+  .gallery {
+    display: flex; flex-wrap: wrap; gap: 30px; justify-content: center;
+    max-width: 1180px; margin: 0 auto; padding: 20px 20px 60px;
+  }
+  .gallery-item { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .gallery-item .cap {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2); text-align: center; max-width: 360px; line-height: 1.5;
+  }
+  .gallery-item .cap b { color: var(--ink-1); }
+  .gallery-item .cap .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: 9.5px; font-weight: 700; margin-right: 5px;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     Device frame — reproduces the ACTUAL plugin's tokens.
+     Figma plugin iframes are fixed-light regardless of app
+     theme, so the frame contents never adapt to dark mode.
+  ═══════════════════════════════════════════════════════════ */
+  .frame {
+    width: 360px; max-width: 100%; height: 600px; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 24px 60px -24px rgba(0,0,0,0.45), 0 2px 10px rgba(0,0,0,0.14);
+    border: 1px solid rgba(0,0,0,0.08); flex-shrink: 0; background: #fff;
+  }
+  .frame-bar { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: #f1ede3; }
+  .frame-dot { width: 8px; height: 8px; border-radius: 50%; background: #ddd6c6; }
+  .frame-label { margin-left: 6px; font-size: 10px; font-family: var(--sans); color: #a39d8a; }
+
+  .mock-frame {
+    --p-bg: #f7f5f0; --p-surface: #ffffff; --p-surface-2: #f2efe7;
+    --p-line: #ece6d8; --p-line-strong: #ddd4c0;
+    --p-ink-1: #262420; --p-ink-2: #6b6656; --p-ink-3: #a39d8a;
+    --p-accent: #a85a0a; --p-accent-soft: rgba(168,90,10,0.08); --p-accent-line: rgba(168,90,10,0.32);
+    --p-dot-comp: #a85a0a; --p-dot-text: #4f7cc4; --p-dot-vec: #9a63b0;
+    --p-f-ui:   -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+    --p-f-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+
+    height: calc(100% - 26px);
+    background: var(--p-bg); color: var(--p-ink-1); font-family: var(--p-f-ui);
+    display: flex; flex-direction: column; padding: 12px 14px 14px; gap: 10px; overflow: hidden;
+  }
+
+  .p-header { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 22px; }
+  .p-back {
+    width: 22px; height: 22px; border-radius: 999px; border: 1px solid var(--p-line);
+    background: var(--p-surface); color: var(--p-ink-2);
+    display: flex; align-items: center; justify-content: center; font-size: 11px;
+  }
+  .p-header .p-title { font-size: 11px; color: var(--p-ink-3); font-family: var(--p-f-mono); }
+
+  .p-stage {
+    flex: 1; min-height: 110px; border-radius: 12px; position: relative;
+    background-color: var(--p-surface-2);
+    background-image:
+      linear-gradient(45deg, rgba(38,36,32,0.035) 25%, transparent 25%),
+      linear-gradient(-45deg, rgba(38,36,32,0.035) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgba(38,36,32,0.035) 75%),
+      linear-gradient(-45deg, transparent 75%, rgba(38,36,32,0.035) 75%);
+    background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .p-stage-btn {
+    display: inline-flex; align-items: center; gap: 7px; padding: 10px 16px; border-radius: 8px;
+    background: var(--p-accent); color: #fff; font-size: 13px; font-weight: 600;
+    filter: drop-shadow(0 10px 20px rgba(168,90,10,0.35));
+  }
+
+  /* Expanded = the state that matters. Preview / caption / chips / CTA
+     drop out entirely (display:none, no leftover flex gap) so the tab
+     content gets the full panel — same mechanic today's "View JSON"
+     collapse already uses in the real plugin. */
+  .mock-frame.collapsed-preview .p-stage,
+  .mock-frame.collapsed-preview .p-caption,
+  .mock-frame.collapsed-preview .p-chips,
+  .mock-frame.collapsed-preview .p-cta { display: none; }
+
+  .p-caption { flex-shrink: 0; text-align: center; }
+  .p-caption .name { font-size: 13.5px; font-weight: 600; }
+  .p-caption .meta { margin-top: 2px; font-family: var(--p-f-mono); font-size: 10.5px; color: var(--p-ink-3); }
+
+  .p-chips { flex-shrink: 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; }
+  .p-chip {
+    padding: 6px 10px; border-radius: 999px; border: 1px solid var(--p-line);
+    background: var(--p-surface); color: var(--p-ink-2); font-size: 10.5px; display: flex; align-items: center; gap: 4px;
+  }
+  .p-chip.on { background: var(--p-accent-soft); border-color: var(--p-accent-line); color: var(--p-accent); font-weight: 600; }
+
+  .tree { font-family: var(--p-f-mono); font-size: 10.8px; }
+  .tree-row {
+    display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 6px;
+    white-space: nowrap; cursor: pointer; color: var(--p-ink-2);
+  }
+  .tree-row:hover { background: var(--p-surface-2); }
+  .tree-row.sel { background: var(--p-accent-soft); }
+  .tree-row.sel .t-name { color: var(--p-accent); font-weight: 600; }
+  .tree-row.d0 { padding-left: 8px; }
+  .tree-row.d1 { padding-left: 24px; }
+  .tree-row .caret { width: 9px; text-align: center; color: var(--p-ink-3); font-size: 9px; flex-shrink: 0; }
+  .tree-row .dot { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
+  .dot-comp { background: var(--p-dot-comp); }
+  .dot-text { background: var(--p-dot-text); }
+  .dot-vec  { background: var(--p-dot-vec); }
+  .t-name { color: var(--p-ink-1); }
+  .t-type { margin-left: auto; color: var(--p-ink-3); font-size: 9.5px; }
+
+  .props { display: flex; flex-direction: column; gap: 5px; font-family: var(--p-f-mono); font-size: 10px; }
+  .prop-row { display: flex; justify-content: space-between; gap: 10px; }
+  .prop-row .k { color: var(--p-ink-3); }
+  .prop-row .v { color: var(--p-ink-1); text-align: right; overflow: hidden; text-overflow: ellipsis; }
+
+  .json-pane {
+    font-family: var(--p-f-mono); font-size: 10px; line-height: 1.6; color: var(--p-ink-2);
+    white-space: pre-wrap; overflow-y: auto;
+  }
+  .json-pane .jk { color: var(--p-accent); font-weight: 600; }
+  .json-pane .js { color: #9a5f9e; }
+
+  .p-cta { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+  .p-cta button { height: 34px; border-radius: 9px; border: none; background: var(--p-accent); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .p-cta .secondary { background: none; color: var(--p-ink-3); font-weight: 500; text-decoration: underline; height: auto; padding: 2px 0; }
+
+  /* ═══ Option 1 — segmented tabs, accordion under selected row ═══ */
+  .v1-tabs { flex-shrink: 0; display: flex; background: var(--p-surface); border: 1px solid var(--p-line); border-radius: 999px; padding: 2px; align-self: center; gap: 2px; }
+  .v1-tabs button { border: none; background: none; padding: 5px 14px; border-radius: 999px; font-family: var(--p-f-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.03em; color: var(--p-ink-2); cursor: pointer; }
+  .v1-tabs button.active { background: var(--p-accent); color: #fff; }
+  .v1-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .v1-body[hidden] { display: none; }
+  .v1-tree-scroll { flex: 1; overflow-y: auto; }
+  .v1-accordion { margin: 2px 8px 6px 24px; padding: 8px 10px; background: var(--p-surface); border: 1px solid var(--p-line); border-radius: 8px; }
+  .v1-accordion[hidden] { display: none; }
+  .v1-json-scroll { flex: 1; overflow-y: auto; background: var(--p-surface-2); border: 1px solid var(--p-line); border-radius: 8px; padding: 8px 10px; }
+
+  /* ═══ Option 2 — tabs + pinned properties footer ═══ */
+  .v2-tabs { flex-shrink: 0; display: flex; background: var(--p-surface); border: 1px solid var(--p-line); border-radius: 999px; padding: 2px; align-self: center; gap: 2px; }
+  .v2-tabs button { border: none; background: none; padding: 5px 14px; border-radius: 999px; font-family: var(--p-f-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.03em; color: var(--p-ink-2); cursor: pointer; }
+  .v2-tabs button.active { background: var(--p-accent); color: #fff; }
+  .v2-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .v2-body[hidden] { display: none; }
+  .v2-tree-scroll { flex: 1; overflow-y: auto; min-height: 60px; }
+  .v2-props-panel { flex-shrink: 0; max-height: 130px; overflow-y: auto; border-top: 1px dashed var(--p-line-strong); padding-top: 8px; }
+  .v2-props-panel .lbl { font-family: var(--p-f-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--p-ink-3); margin-bottom: 6px; display: block; }
+  .v2-json-scroll { flex: 1; overflow-y: auto; background: var(--p-surface-2); border: 1px solid var(--p-line); border-radius: 8px; padding: 8px 10px; }
+
+  /* ═══ Option 3 — single disclosure row, icon format-switch, inline nested props ═══ */
+  .v3-toggle { flex-shrink: 0; display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; padding: 2px 0; cursor: pointer; }
+  .v3-toggle .lbl { flex: 1; text-align: left; font-size: 11px; color: var(--p-ink-3); }
+  .v3-toggle .chevron { font-size: 9px; color: var(--p-ink-3); transition: transform 0.15s; }
+  .v3-toggle.expanded .chevron { transform: rotate(180deg); }
+  .v3-switch { display: flex; background: var(--p-surface-2); border: 1px solid var(--p-line); border-radius: 7px; overflow: hidden; }
+  .v3-switch button { border: none; background: none; padding: 3px 7px; font-size: 11px; color: var(--p-ink-3); cursor: pointer; line-height: 1; }
+  .v3-switch button.active { background: var(--p-accent); color: #fff; }
+  .v3-body { flex: 1; min-height: 0; overflow: hidden; }
+  .v3-body[hidden] { display: none; }
+  .v3-tree-scroll { height: 100%; overflow-y: auto; }
+  .v3-json-scroll { height: 100%; overflow-y: auto; background: var(--p-surface-2); border: 1px solid var(--p-line); border-radius: 8px; padding: 8px 10px; }
+  .v3-subrow { display: flex; justify-content: space-between; gap: 8px; height: 20px; align-items: center; padding-left: 46px; padding-right: 10px; font-family: var(--p-f-mono); font-size: 9.5px; color: var(--p-ink-3); }
+  .v3-subrow .k::before { content: "· "; }
+  .v3-subrow .v { color: var(--p-ink-2); }
+  .v3-subrows[hidden] { display: none; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="kicker">DesignExport AI · Inspector tab — expanded previews</div>
+  <p>All three rendered already open, at the real 360×640 panel size. Rows and tabs still click.</p>
+</div>
+
+<div class="gallery">
+
+  <!-- ═══ Option 1 — expanded ═══ -->
+  <div class="gallery-item">
+    <div class="frame">
+      <div class="frame-bar"><span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-label">designexport-ai</span></div>
+      <div class="mock-frame collapsed-preview" data-variant="1">
+        <div class="p-header"><div class="p-back">‹</div><div class="p-title">Button/Primary</div></div>
+
+        <div class="v1-tabs">
+          <button type="button" class="active" data-tab="tree">TREE</button>
+          <button type="button" data-tab="json">JSON</button>
+        </div>
+
+        <div class="v1-body" data-panel="tree">
+          <div class="v1-tree-scroll">
+            <div class="tree">
+              <div class="tree-row d0 sel" data-name="Button/Primary" data-type="COMPONENT"
+                   data-props='{"display":"flex","alignItems":"center","justifyContent":"center","gap":"8px","padding":"10px 16px","borderRadius":"8px","background":"var(--accent-600, #A85A0A)"}'>
+                <span class="caret">▾</span><span class="dot dot-comp"></span><span class="t-name">Button/Primary</span><span class="t-type">COMPONENT</span>
+              </div>
+              <div class="v1-accordion">
+                <div class="props">
+                  <div class="prop-row"><span class="k">display</span><span class="v">flex</span></div>
+                  <div class="prop-row"><span class="k">alignItems</span><span class="v">center</span></div>
+                  <div class="prop-row"><span class="k">justifyContent</span><span class="v">center</span></div>
+                  <div class="prop-row"><span class="k">gap</span><span class="v">8px</span></div>
+                  <div class="prop-row"><span class="k">padding</span><span class="v">10px 16px</span></div>
+                  <div class="prop-row"><span class="k">borderRadius</span><span class="v">8px</span></div>
+                  <div class="prop-row"><span class="k">background</span><span class="v">var(--accent-600, #A85A0A)</span></div>
+                </div>
+              </div>
+              <div class="tree-row d1" data-name="Icon" data-type="VECTOR" data-props='{"width":"16px","height":"16px","color":"var(--white, #FFFFFF)"}'>
+                <span class="caret">·</span><span class="dot dot-vec"></span><span class="t-name">Icon</span><span class="t-type">VECTOR</span>
+              </div>
+              <div class="v1-accordion" hidden></div>
+              <div class="tree-row d1" data-name="Label" data-type="TEXT" data-props='{"fontFamily":"Inter","fontSize":"14px","fontWeight":"600","lineHeight":"20px","color":"var(--white, #FFFFFF)"}' data-characters="Get started">
+                <span class="caret">·</span><span class="dot dot-text"></span><span class="t-name">Label</span><span class="t-type">TEXT</span>
+              </div>
+              <div class="v1-accordion" hidden></div>
+            </div>
+          </div>
+        </div>
+        <div class="v1-body" data-panel="json" hidden>
+          <div class="v1-json-scroll json-pane">{
+  <span class="jk">"meta"</span>: { <span class="jk">"name"</span>: <span class="js">"Button/Primary"</span> },
+  <span class="jk">"tree"</span>: { <span class="jk">"css"</span>: { <span class="jk">"display"</span>: <span class="js">"flex"</span>, … } }
+}</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><span class="n">1</span><b>Segmented tabs, accordion rows</b> — click a row to expand its CSS beneath it; the tabs swap the whole pane between Tree and JSON.</div>
+  </div>
+
+  <!-- ═══ Option 2 — expanded ═══ -->
+  <div class="gallery-item">
+    <div class="frame">
+      <div class="frame-bar"><span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-label">designexport-ai</span></div>
+      <div class="mock-frame collapsed-preview" data-variant="2">
+        <div class="p-header"><div class="p-back">‹</div><div class="p-title">Button/Primary</div></div>
+
+        <div class="v2-tabs">
+          <button type="button" class="active" data-tab="tree">TREE</button>
+          <button type="button" data-tab="json">JSON</button>
+        </div>
+
+        <div class="v2-body" data-panel="tree">
+          <div class="v2-tree-scroll">
+            <div class="tree">
+              <div class="tree-row d0 sel" data-name="Button/Primary" data-type="COMPONENT"
+                   data-props='{"display":"flex","alignItems":"center","justifyContent":"center","gap":"8px","padding":"10px 16px","borderRadius":"8px","background":"var(--accent-600, #A85A0A)"}'>
+                <span class="caret">▾</span><span class="dot dot-comp"></span><span class="t-name">Button/Primary</span><span class="t-type">COMPONENT</span>
+              </div>
+              <div class="tree-row d1" data-name="Icon" data-type="VECTOR" data-props='{"width":"16px","height":"16px","color":"var(--white, #FFFFFF)"}'>
+                <span class="caret">·</span><span class="dot dot-vec"></span><span class="t-name">Icon</span><span class="t-type">VECTOR</span>
+              </div>
+              <div class="tree-row d1" data-name="Label" data-type="TEXT" data-props='{"fontFamily":"Inter","fontSize":"14px","fontWeight":"600","lineHeight":"20px","color":"var(--white, #FFFFFF)"}' data-characters="Get started">
+                <span class="caret">·</span><span class="dot dot-text"></span><span class="t-name">Label</span><span class="t-type">TEXT</span>
+              </div>
+            </div>
+          </div>
+          <div class="v2-props-panel">
+            <span class="lbl">Properties · Button/Primary</span>
+            <div class="props">
+              <div class="prop-row"><span class="k">display</span><span class="v">flex</span></div>
+              <div class="prop-row"><span class="k">alignItems</span><span class="v">center</span></div>
+              <div class="prop-row"><span class="k">justifyContent</span><span class="v">center</span></div>
+              <div class="prop-row"><span class="k">gap</span><span class="v">8px</span></div>
+              <div class="prop-row"><span class="k">padding</span><span class="v">10px 16px</span></div>
+              <div class="prop-row"><span class="k">borderRadius</span><span class="v">8px</span></div>
+              <div class="prop-row"><span class="k">background</span><span class="v">var(--accent-600, #A85A0A)</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="v2-body" data-panel="json" hidden>
+          <div class="v2-json-scroll json-pane">{
+  <span class="jk">"meta"</span>: { <span class="jk">"name"</span>: <span class="js">"Button/Primary"</span> },
+  <span class="jk">"tree"</span>: { <span class="jk">"css"</span>: { <span class="jk">"display"</span>: <span class="js">"flex"</span>, … } }
+}</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><span class="n">2</span><b>Tabs + pinned properties panel</b> — tree list and its properties sit in separate fixed regions; selecting a row only swaps the footer.</div>
+  </div>
+
+  <!-- ═══ Option 3 — expanded ═══ -->
+  <div class="gallery-item">
+    <div class="frame">
+      <div class="frame-bar"><span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-label">designexport-ai</span></div>
+      <div class="mock-frame collapsed-preview" data-variant="3">
+        <div class="p-header"><div class="p-back">‹</div><div class="p-title">Button/Primary</div></div>
+
+        <button type="button" class="v3-toggle expanded">
+          <span class="lbl">Inspect · 3 nodes</span>
+          <span class="v3-switch">
+            <button type="button" class="active" data-fmt="tree" onclick="event.stopPropagation()">⊞</button>
+            <button type="button" data-fmt="json" onclick="event.stopPropagation()">{ }</button>
+          </span>
+          <span class="chevron">▾</span>
+        </button>
+
+        <div class="v3-body" data-panel="tree">
+          <div class="v3-tree-scroll">
+            <div class="tree">
+              <div class="tree-row d0 sel" data-name="Button/Primary" data-type="COMPONENT"
+                   data-props='{"display":"flex","alignItems":"center","justifyContent":"center","gap":"8px","padding":"10px 16px","borderRadius":"8px","background":"var(--accent-600, #A85A0A)"}'>
+                <span class="caret">▾</span><span class="dot dot-comp"></span><span class="t-name">Button/Primary</span><span class="t-type">COMPONENT</span>
+              </div>
+              <div class="v3-subrows">
+                <div class="v3-subrow"><span class="k">display</span><span class="v">flex</span></div>
+                <div class="v3-subrow"><span class="k">alignItems</span><span class="v">center</span></div>
+                <div class="v3-subrow"><span class="k">justifyContent</span><span class="v">center</span></div>
+                <div class="v3-subrow"><span class="k">gap</span><span class="v">8px</span></div>
+                <div class="v3-subrow"><span class="k">padding</span><span class="v">10px 16px</span></div>
+                <div class="v3-subrow"><span class="k">borderRadius</span><span class="v">8px</span></div>
+                <div class="v3-subrow"><span class="k">background</span><span class="v">var(--accent-600, #A85A0A)</span></div>
+              </div>
+              <div class="tree-row d1" data-name="Icon" data-type="VECTOR" data-props='{"width":"16px","height":"16px","color":"var(--white, #FFFFFF)"}'>
+                <span class="caret">·</span><span class="dot dot-vec"></span><span class="t-name">Icon</span><span class="t-type">VECTOR</span>
+              </div>
+              <div class="v3-subrows" hidden></div>
+              <div class="tree-row d1" data-name="Label" data-type="TEXT" data-props='{"fontFamily":"Inter","fontSize":"14px","fontWeight":"600","lineHeight":"20px","color":"var(--white, #FFFFFF)"}' data-characters="Get started">
+                <span class="caret">·</span><span class="dot dot-text"></span><span class="t-name">Label</span><span class="t-type">TEXT</span>
+              </div>
+              <div class="v3-subrows" hidden></div>
+            </div>
+          </div>
+        </div>
+        <div class="v3-body" data-panel="json" hidden>
+          <div class="v3-json-scroll json-pane">{
+  <span class="jk">"meta"</span>: { <span class="jk">"name"</span>: <span class="js">"Button/Primary"</span> },
+  <span class="jk">"tree"</span>: { <span class="jk">"css"</span>: { <span class="jk">"display"</span>: <span class="js">"flex"</span>, … } }
+}</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><span class="n">3</span><b>Inline disclosure, icon switch</b> — smallest diff from today: one row grows a tree/json icon switch, properties nest inline as dim sub-rows.</div>
+  </div>
+
+</div>
+
+<script>
+  function renderProps(container, propsJson, characters) {
+    container.innerHTML = "";
+    const props = JSON.parse(propsJson);
+    if (characters) {
+      const row = document.createElement("div");
+      row.className = "prop-row";
+      row.innerHTML = '<span class="k">characters</span><span class="v">"' + characters + '"</span>';
+      container.appendChild(row);
+    }
+    Object.entries(props).forEach(([k, v]) => {
+      const row = document.createElement("div");
+      row.className = "prop-row";
+      row.innerHTML = '<span class="k">' + k + '</span><span class="v">' + v + '</span>';
+      container.appendChild(row);
+    });
+  }
+
+  function selectRow(frame, row) {
+    frame.querySelectorAll(".tree-row").forEach(r => r.classList.remove("sel"));
+    row.classList.add("sel");
+  }
+
+  // ── Option 1: tabs + accordion under the clicked row ──
+  document.querySelectorAll('.mock-frame[data-variant="1"]').forEach(frame => {
+    frame.querySelectorAll(".v1-tabs button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        frame.querySelectorAll(".v1-tabs button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const tab = btn.dataset.tab;
+        frame.querySelectorAll(".v1-body").forEach(p => p.hidden = p.dataset.panel !== tab);
+      });
+    });
+    frame.querySelectorAll(".tree-row").forEach(row => {
+      row.addEventListener("click", () => {
+        const wasOpen = row.classList.contains("sel") && row.nextElementSibling && !row.nextElementSibling.hidden;
+        frame.querySelectorAll(".v1-accordion").forEach(a => { a.hidden = true; a.innerHTML = ""; });
+        selectRow(frame, row);
+        if (wasOpen) return;
+        const acc = row.nextElementSibling;
+        if (acc && acc.classList.contains("v1-accordion")) {
+          const propsWrap = document.createElement("div");
+          propsWrap.className = "props";
+          acc.appendChild(propsWrap);
+          renderProps(propsWrap, row.dataset.props, row.dataset.characters);
+          acc.hidden = false;
+        }
+      });
+    });
+  });
+
+  // ── Option 2: tabs + persistent properties footer ──
+  document.querySelectorAll('.mock-frame[data-variant="2"]').forEach(frame => {
+    const propsBox = frame.querySelector(".v2-props-panel .props");
+    const lbl = frame.querySelector(".v2-props-panel .lbl");
+    frame.querySelectorAll(".v2-tabs button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const wasActive = btn.classList.contains("active");
+        frame.querySelectorAll(".v2-tabs button").forEach(b => b.classList.remove("active"));
+        frame.querySelectorAll(".v2-body").forEach(p => p.hidden = true);
+        if (wasActive) {
+          frame.classList.remove("collapsed-preview");
+          return;
+        }
+        btn.classList.add("active");
+        frame.classList.add("collapsed-preview");
+        const tab = btn.dataset.tab;
+        frame.querySelectorAll(".v2-body").forEach(p => p.hidden = p.dataset.panel !== tab);
+      });
+    });
+    frame.querySelectorAll(".tree-row").forEach(row => {
+      row.addEventListener("click", () => {
+        selectRow(frame, row);
+        lbl.textContent = "Properties · " + row.dataset.name;
+        renderProps(propsBox, row.dataset.props, row.dataset.characters);
+      });
+    });
+  });
+
+  // ── Option 3: single disclosure + icon switch + inline sub-rows ──
+  document.querySelectorAll('.mock-frame[data-variant="3"]').forEach(frame => {
+    const toggle = frame.querySelector(".v3-toggle");
+    const switchBtns = frame.querySelectorAll(".v3-switch button");
+    toggle.addEventListener("click", () => {
+      const expanded = toggle.classList.toggle("expanded");
+      frame.classList.toggle("collapsed-preview", expanded);
+      const activeFmt = frame.querySelector(".v3-switch button.active").dataset.fmt;
+      frame.querySelectorAll(".v3-body").forEach(p => p.hidden = !expanded || p.dataset.panel !== activeFmt);
+    });
+    switchBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        switchBtns.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        frame.querySelectorAll(".v3-body").forEach(p => p.hidden = p.dataset.panel !== btn.dataset.fmt);
+      });
+    });
+    frame.querySelectorAll(".tree-row").forEach(row => {
+      row.addEventListener("click", () => {
+        const sub = row.nextElementSibling;
+        const wasOpen = sub && !sub.hidden;
+        frame.querySelectorAll(".v3-subrows").forEach(s => { s.hidden = true; s.innerHTML = ""; });
+        selectRow(frame, row);
+        if (wasOpen) return;
+        if (sub && sub.classList.contains("v3-subrows")) {
+          const props = JSON.parse(row.dataset.props);
+          let html = "";
+          if (row.dataset.characters) {
+            html += '<div class="v3-subrow"><span class="k">characters</span><span class="v">"' + row.dataset.characters + '"</span></div>';
+          }
+          Object.entries(props).forEach(([k, v]) => {
+            html += '<div class="v3-subrow"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+          });
+          sub.innerHTML = html;
+          sub.hidden = false;
+        }
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
