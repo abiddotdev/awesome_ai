@@ -1,0 +1,40 @@
+{
+  "name": "DesignExport AI",
+  "id": "1734502261889340221",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"]
+  },
+  "editorType": ["figma", "dev"],
+  "capabilities": ["inspect", "codegen"],
+  "permissions": ["currentuser", "activeusers"],
+  "codegenLanguages": [
+    { "label": "JSON", "value": "json" }
+  ],
+  "codegenPreferences": [
+    {
+      "itemType": "select",
+      "propertyName": "png",
+      "label": "PNG",
+      "options": [
+        { "label": "Exclude", "value": "off", "isDefault": true },
+        { "label": "Include", "value": "on" }
+      ]
+    },
+    {
+      "itemType": "select",
+      "propertyName": "depth",
+      "label": "Depth",
+      "options": [
+        { "label": "Full tree", "value": "full", "isDefault": true },
+        { "label": "2 levels", "value": "2" },
+        { "label": "3 levels", "value": "3" },
+        { "label": "4 levels", "value": "4" },
+        { "label": "5 levels", "value": "5" }
+      ]
+    }
+  ]
+}
