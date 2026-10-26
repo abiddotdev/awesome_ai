@@ -432,6 +432,10 @@
       border-color: var(--fig-blue);
       color: var(--fig-blue);
     }
+    .order-btn.order-delete:hover:not(:disabled) {
+      border-color: #e53935;
+      color: #e53935;
+    }
     .order-btn:disabled {
       opacity: 0.3;
       cursor: not-allowed;
@@ -909,7 +913,9 @@ var fflate;!function(f){typeof module!='undefined'&&typeof exports=='object'?mod
     });
 
     nextBtn.addEventListener('click', () => {
-      selectedIds = [...listEl.querySelectorAll('input[type="checkbox"]')]
+      selectedIds = [...listEl.querySelectorAll('.item')]
+        .filter(el => el.style.display !== 'none')
+        .map(el => el.querySelector('input[type="checkbox"]'))
         .filter(c => c.checked)
         .map(c => c.dataset.id);
       rebuildOrderedSelected();
@@ -946,10 +952,19 @@ var fflate;!function(f){typeof module!='undefined'&&typeof exports=='object'?mod
         <div class="order-row" data-idx="${i}">
           <span class="order-name" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>
           <span class="order-tier tier-${escapeHtml(c.tier || '')}${c.tierOverridden ? ' overridden' : ''}">${escapeHtml(c.tier || '')}</span>
+          <button type="button" class="order-btn order-delete" title="Remove">×</button>
           <button type="button" class="order-btn order-up" ${i === 0 ? 'disabled' : ''} title="Move up">↑</button>
           <button type="button" class="order-btn order-down" ${i === orderedSelected.length - 1 ? 'disabled' : ''} title="Move down">↓</button>
         </div>
       `).join('');
+      listEl.querySelectorAll('.order-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const row = e.currentTarget.closest('.order-row');
+          const idx = parseInt(row.dataset.idx, 10);
+          orderedSelected.splice(idx, 1);
+          renderOrderList();
+        });
+      });
       listEl.querySelectorAll('.order-up').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const row = e.currentTarget.closest('.order-row');
@@ -1021,7 +1036,7 @@ var fflate;!function(f){typeof module!='undefined'&&typeof exports=='object'?mod
       const output = document.querySelector('input[name="output"]:checked').value;
       const cascadeMode = (document.querySelector('input[name="cascade"]:checked') || {}).value || 'flat';
       const importOrder = orderedSelected.map(c => c.id);
-      parent.postMessage({ pluginMessage: { type: 'export', collectionIds: selectedIds, output, cascadeMode, importOrder, tierOverrides } }, '*');
+      parent.postMessage({ pluginMessage: { type: 'export', collectionIds: orderedSelected.map(c => c.id), output, cascadeMode, importOrder, tierOverrides } }, '*');
       exportBtn.classList.add('loading');
       exportBtn.disabled = true;
       exportBtn.innerHTML = 'Exporting<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>';
