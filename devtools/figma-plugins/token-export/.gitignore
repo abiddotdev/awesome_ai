@@ -4,6 +4,6 @@
 node_modules
 
 out/
-dist/
-code.js
+dist/*.zip
+/code.js
 _tmp/

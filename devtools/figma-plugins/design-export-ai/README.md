@@ -13,6 +13,7 @@ Unlike a general-purpose Figma inspector, DesignExport AI only ever produces the
 - `meta` — node id, name, type
 - `context` — summary stats (is component, has text/vectors, child count)
 - `tree` — the node hierarchy with pruned per-node CSS
+- `textClass` — on text nodes that use a text style, the matching Token Export `typography.css` class (e.g. `text-body-medium`)
 - `assets.png_base64` / `assets.svg` — optional snapshots
 - `aiMetadata` — any `AI Metadata:` notes found in component descriptions, hoisted once per component instead of repeated on every instance
 
@@ -20,7 +21,7 @@ Unlike a general-purpose Figma inspector, DesignExport AI only ever produces the
 
 - Every variant's tree
 - The variant property matrix (e.g. `Size: [sm, md, lg]`)
-- Every bound variable resolved across all of its modes (e.g. light/dark)
+- Every bound variable resolved across all of its modes (e.g. light/dark), with its CSS variable and, for multi-mode collections, the `data-*` attribute and values Token Export scopes it to
 
 ---
 
