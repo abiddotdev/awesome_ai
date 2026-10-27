@@ -142,7 +142,8 @@ function splitDescription(desc: string): { primary: string; aiMetadata: string }
 function cssVarName(v: Variable): string {
   const web = v.codeSyntax ? (v.codeSyntax as Record<string, string>).WEB : undefined;
   if (web) {
-    const m = web.match(/var\((--[^)]+)\)/);
+    // Accept both `var(--name)` and a bare `--name`.
+    const m = web.match(/var\(\s*(--[^,\s)]+)/) || web.match(/^\s*(--[A-Za-z0-9_-]+)\s*$/);
     if (m) return m[1];
   }
   return '--' + v.name.toLowerCase()
@@ -221,6 +222,37 @@ interface DuplicateWarning {
   occurrences: number;
 }
 
+// Multi-mode collections (among the selected ones) that a collection's tokens
+// depend on, directly or through other collections' aliases.
+function modeDependencies(
+  col: VariableCollection,
+  selectedIds: string[],
+  collections: VariableCollection[],
+  variables: Variable[],
+): VariableCollection[] {
+  const varMap = new Map(variables.map(v => [v.id, v]));
+  const colMap = new Map(collections.map(c => [c.id, c]));
+  const deps = new Set<string>();
+  const seen = new Set<string>();
+  const queue = variables.filter(v => v.variableCollectionId === col.id);
+  while (queue.length > 0) {
+    const v = queue.pop()!;
+    if (seen.has(v.id)) continue;
+    seen.add(v.id);
+    for (const val of Object.values(v.valuesByMode)) {
+      if (!isAlias(val)) continue;
+      const target = varMap.get(val.id);
+      if (!target) continue;
+      const targetCol = colMap.get(target.variableCollectionId);
+      if (targetCol && targetCol.id !== col.id && targetCol.modes.length > 1 && selectedIds.includes(targetCol.id)) {
+        deps.add(targetCol.id);
+      }
+      queue.push(target);
+    }
+  }
+  return collections.filter(c => deps.has(c.id));
+}
+
 function generateCSS(
   selectedIds: string[],
   collections: VariableCollection[],
@@ -239,6 +271,12 @@ function generateCSS(
     const collectionSlug = slugify(col.name);
     const dataAttr = CSS_CONFIG.modeDataAttr(collectionSlug);
     const isMultiMode = col.modes.length > 1;
+    // A single-mode collection that aliases into multi-mode ones is declared on
+    // their mode attributes as well as :root. A var() is resolved where it is
+    // declared, so on :root alone it would be fixed to the default modes and
+    // never follow a data-* attribute set lower in the page.
+    const modeDeps = isMultiMode ? [] : modeDependencies(col, selectedIds, collections, variables);
+    const depAttrs = modeDeps.map(c => `[${CSS_CONFIG.modeDataAttr(slugify(c.name))}]`);
     const lines: string[] = [];
     const body: string[] = [];
 
@@ -248,6 +286,9 @@ function generateCSS(
     if (isMultiMode) {
       lines.push(` * Modes: ${col.modes.map(m => m.name).join(', ')}`);
       lines.push(` * Default: :root, [${dataAttr}="${slugify(col.modes[0].name)}"]`);
+    }
+    if (depAttrs.length > 0) {
+      lines.push(` * Also declared on ${depAttrs.join(', ')} so its tokens follow those modes`);
     }
     if (cascadeMode === 'layered') {
       lines.push(` * Cascade layer: ${collectionSlug}`);
@@ -262,7 +303,7 @@ function generateCSS(
       const selector = i === 0 && isMultiMode
         ? `:root,\n[${dataAttr}="${modeSlug}"]`
         : i === 0
-        ? ':root'
+        ? [':root', ...depAttrs].join(',\n')
         : `[${dataAttr}="${modeSlug}"]`;
 
       // Count occurrences of each CSS var name in this mode block
@@ -533,6 +574,9 @@ function buildTokenGroups(vars: MdVar[]) {
     scopes: Set<string>;
     aliases: Set<string>;
     descs: string[];
+    // Per-token desc/alias, index-aligned with suffixes. `descs` and `aliases`
+    // skip empties and dedupe, so they can't be indexed per token.
+    members: Array<{ desc: string; alias: string | null }>;
   }>();
 
   for (const v of vars) {
@@ -541,10 +585,11 @@ function buildTokenGroups(vars: MdVar[]) {
     const suffix = parts[parts.length - 1];
 
     if (!prefixMap.has(prefix)) {
-      prefixMap.set(prefix, { suffixes: [], scopes: new Set(), aliases: new Set(), descs: [] });
+      prefixMap.set(prefix, { suffixes: [], scopes: new Set(), aliases: new Set(), descs: [], members: [] });
     }
     const g = prefixMap.get(prefix)!;
     g.suffixes.push(suffix);
+    g.members.push({ desc: v.description, alias: v.aliasTargetVar });
     for (const s of v.scopes) g.scopes.add(s);
     if (v.description) g.descs.push(v.description);
     if (v.aliasTargetVar) g.aliases.add(v.aliasTargetVar);
@@ -609,13 +654,12 @@ function buildTokenGroups(vars: MdVar[]) {
       .map(s => SCOPE_LABELS[s] || s).join(', ');
 
     if (g.suffixes.length <= 2) {
-      const aliasArr = [...g.aliases];
       for (let i = 0; i < g.suffixes.length; i++) {
         singles.push({
           token: `--${prefix}-${g.suffixes[i]}`,
           scopes: scopeStr,
-          alias: aliasArr[i] || aliasArr[0] || null,
-          desc: g.descs[i] || g.descs[0] || '',
+          alias: g.members[i].alias,
+          desc: g.members[i].desc,
           prefix,
         });
       }
@@ -689,6 +733,18 @@ function buildTokenGroups(vars: MdVar[]) {
   }
 
   return result;
+}
+
+// Label a collection's tokens by the prefix its CSS variables actually share
+// (e.g. `--color-scale-*`), falling back to its file when they share none.
+// Variable names are not prefixed with the collection name, so `--<slug>-*`
+// would point the reader at variables that do not exist.
+function collectionVarLabel(col: VariableCollection, variables: Variable[]): string {
+  const names = variables.filter(v => v.variableCollectionId === col.id).map(cssVarName);
+  const common = findCommonPrefix(names);
+  const cut = common.lastIndexOf('-');
+  const prefix = cut > 2 ? common.slice(0, cut + 1) : '';
+  return prefix ? `${prefix}*` : `(${slugify(col.name)}.css tokens)`;
 }
 
 function generateMarkdown(
@@ -766,29 +822,65 @@ function generateMarkdown(
     md.push('The token chain for a component crosses multiple collections:');
     md.push('');
     md.push('```');
-    // Build chain from the multi-mode collections in order
-    for (let i = 0; i < multiModeCollections.length; i++) {
-      const col = multiModeCollections[i];
+    // Draw the chain in alias order: a collection sits above the ones it
+    // aliases into. Single-mode collections go at the top when they are the
+    // component tier, at the bottom (concrete values) otherwise.
+    const aliasesInto = (a: VariableCollection, b: VariableCollection) => variables
+      .filter(v => v.variableCollectionId === a.id)
+      .some(v => Object.values(v.valuesByMode).some(val => {
+        if (!isAlias(val)) return false;
+        const target = varMap.get(val.id);
+        return target !== undefined && target.variableCollectionId === b.id;
+      }));
+    const chain: VariableCollection[] = [];
+    const remaining = [...multiModeCollections];
+    while (remaining.length > 0) {
+      // Next is one that nothing still remaining aliases into; on a cycle,
+      // fall back to tier order.
+      const idx = remaining.findIndex(c => !remaining.some(o => o !== c && aliasesInto(o, c)));
+      chain.push(remaining.splice(idx === -1 ? 0 : idx, 1)[0]);
+    }
+    const singleMode = collections.filter(c => selectedIds.includes(c.id) && c.modes.length <= 1);
+    const topNames = singleMode
+      .filter(c => tierMap.get(c.id) === 'component')
+      .map(c => collectionVarLabel(c, variables));
+    const bottomNames = singleMode
+      .filter(c => tierMap.get(c.id) !== 'component')
+      .map(c => collectionVarLabel(c, variables));
+    if (topNames.length > 0) {
+      md.push(`               ${topNames.join(' / ')}  (components use these)`);
+      md.push('                   ↓  var()');
+    }
+    for (let i = 0; i < chain.length; i++) {
+      const col = chain[i];
       const attr = CSS_CONFIG.modeDataAttr(slugify(col.name));
-      const varPrefix = `--${slugify(col.name)}-*`;
-      md.push(`${attr}  →  ${varPrefix}`);
-      if (i < multiModeCollections.length - 1) {
+      md.push(`${attr}  →  ${collectionVarLabel(col, variables)}`);
+      if (i < chain.length - 1) {
         md.push('                   ↓  var()');
       }
     }
-    // Primitive layer at the bottom
-    const primNames = collections
-      .filter(c => selectedIds.includes(c.id) && c.modes.length <= 1)
-      .map(c => `--${slugify(c.name)}-*`);
-    if (primNames.length > 0) {
+    if (bottomNames.length > 0) {
       md.push('                   ↓  var()');
-      md.push(`               ${primNames.join(' / ')}  (concrete value)`);
+      md.push(`               ${bottomNames.join(' / ')}  (concrete value)`);
     }
     md.push('```');
     md.push('');
-    md.push('Each `var()` reference is resolved in the **inherited scope of the element that uses it**.');
-    md.push('When mode attributes sit on different ancestors, an intermediate reference can resolve');
-    md.push('against the wrong ancestor\'s scope and silently fall back to the default palette.');
+    md.push('A custom property containing `var()` is resolved on the element where it is **declared**,');
+    md.push('and elements below inherit the result. When mode attributes sit on different ancestors,');
+    md.push('an intermediate reference can be resolved where only some of them are set and silently');
+    md.push('fall back to the default palette.');
+    const depCollections = collections.filter(c => selectedIds.includes(c.id) && c.modes.length <= 1
+      && modeDependencies(c, selectedIds, collections, variables).length > 0);
+    if (depCollections.length > 0) {
+      md.push('');
+      md.push(`Single-mode collections that alias into these (${depCollections.map(c => c.name).join(', ')})`);
+      md.push('are declared on `:root` and on every mode attribute they depend on, so their tokens');
+      md.push('follow the nearest mode attributes instead of staying fixed to the defaults.');
+    }
+    md.push('');
+    md.push('**Overrides:** set a token override on the element that carries the mode attributes, or on the');
+    md.push('component itself. An override on an ancestor above a mode attribute is replaced wherever a');
+    md.push('descendant sets that attribute, because the tokens are declared again there.');
     md.push('');
     const attrs = multiModeCollections.map(c => CSS_CONFIG.modeDataAttr(slugify(c.name)));
     // Use the first mode of each collection as example values
@@ -797,7 +889,7 @@ function generateMarkdown(
       const exampleMode = slugify(c.modes[0].name);
       return `${attr}="${exampleMode}"`;
     });
-    md.push('**Rule: place all mode attributes that a component depends on on the same ancestor element.**');
+    md.push('**Rule: keep all the mode attributes a component depends on together, on one element.**');
     if (hasCrossCollectionPairs) {
       md.push('> For components, `theme-scope.css` (included in this export) satisfies this');
       md.push('> automatically for known cross-collection chains — see the section below.');
@@ -875,23 +967,31 @@ function generateMarkdown(
     // Find a pair (A→B) where A's variables alias into B for accurate trace slugs.
     let traceA = multiModeCollections[0];
     let traceB = multiModeCollections[1];
+    // Real token names for the trace when such a bridge exists; generic
+    // placeholders otherwise.
+    let bridge: { src: string; tgt: string } | null = null;
     outer: for (const a of multiModeCollections) {
       for (const b of multiModeCollections) {
         if (a.id === b.id) continue;
-        const aliasesIntoB = variables
-          .filter(v => v.variableCollectionId === a.id)
-          .some(v => Object.values(v.valuesByMode).some(val => {
-            if (!isAlias(val)) return false;
+        for (const v of variables.filter(x => x.variableCollectionId === a.id)) {
+          for (const val of Object.values(v.valuesByMode)) {
+            if (!isAlias(val)) continue;
             const target = varMap.get(val.id);
-            return target !== undefined && target.variableCollectionId === b.id;
-          }));
-        if (aliasesIntoB) { traceA = a; traceB = b; break outer; }
+            if (target && target.variableCollectionId === b.id) {
+              traceA = a; traceB = b;
+              bridge = { src: cssVarName(v), tgt: cssVarName(target) };
+              break outer;
+            }
+          }
+        }
       }
     }
     const traceASlug = slugify(traceA.name);
     const traceBSlug = slugify(traceB.name);
     const traceAMode = slugify(traceA.modes[0].name);
     const traceBMode = slugify(traceB.modes[0].name);
+    const srcVar = bridge ? bridge.src : `--${traceASlug}-color`;
+    const tgtVar = bridge ? bridge.tgt : `--${traceBSlug}-light-color`;
 
     md.push('## Component boundaries and the token chain');
     md.push('');
@@ -903,10 +1003,10 @@ function generateMarkdown(
     md.push('');
     md.push('```');
     md.push(`Parent  data-${traceASlug}="${traceAMode}"  (no data-${traceBSlug}):`);
-    md.push(`  --${traceASlug}-color: var(--${traceBSlug}-light-color)`);
-    md.push(`    -> --${traceBSlug}-light-color resolved here = :root default  (sealed)`);
+    md.push(`  ${srcVar}: var(${tgtVar})`);
+    md.push(`    -> ${tgtVar} resolved here = :root default  (sealed)`);
     md.push(`Component  data-${traceBSlug}="${traceBMode}":`);
-    md.push(`  inherits --${traceASlug}-color = <default>  own data-${traceBSlug} rule never fires`);
+    md.push(`  inherits ${srcVar} = <default>  own data-${traceBSlug} rule never fires`);
     md.push('```');
     md.push('');
 
@@ -919,12 +1019,12 @@ function generateMarkdown(
       md.push('');
       md.push('```css');
       md.push(`/* without — sealed at [data-${traceASlug}], target tokens absent */`);
-      md.push(`[data-${traceASlug}="..."] { --${traceASlug}-color: var(--${traceBSlug}-light-color); }`);
+      md.push(`[data-${traceASlug}="..."] { ${srcVar}: var(${tgtVar}); }`);
       md.push('');
       md.push(`/* with — resolves at [data-${traceBSlug}] where target tokens are set */`);
       md.push(`@scope ([data-${traceASlug}="..."]) {`);
       md.push(`  :scope[data-${traceBSlug}], [data-${traceBSlug}] {`);
-      md.push(`    --${traceASlug}-color: var(--${traceBSlug}-light-color);`);
+      md.push(`    ${srcVar}: var(${tgtVar});`);
       md.push('  }');
       md.push('}');
       md.push('```');
@@ -939,7 +1039,7 @@ function generateMarkdown(
       md.push(`- A component choosing its own shape (\`data-direction\`) must carry that attribute on its own host`);
       md.push('- Collections added after this export are not bridged — re-export to update');
       md.push('');
-      md.push('**Browser support:** `@scope` requires Chrome 118+, Firefox 128+, Safari 17.4+.');
+      md.push('**Browser support:** `@scope` requires Chrome 118+, Firefox 146+, Safari 17.4+.');
       md.push('On older browsers `theme-scope.css` is silently ignored and the chain falls back');
       md.push('to the `:root` default — the same as without the file. If legacy browser support');
       md.push('is required, mirror the mode attribute onto the component host instead.');
