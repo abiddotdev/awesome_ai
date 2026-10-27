@@ -67,6 +67,7 @@ interface SimpleNode {
   context?: NodeContext;    // present on INSTANCE / COMPONENT nodes only
   fills?: FillEntry[];      // present when node has 2+ visible fills; replaces css.background
   characters?: string;
+  textClass?: string;       // TEXT using a text style: token-export's typography.css class, e.g. "text-body-medium"
   textRanges?: TextRange[];  // present on TEXT nodes with mixed styles
   svg?: string;
   children?: SimpleNode[];  // omitted when empty
@@ -128,9 +129,11 @@ interface VariantExport {
 interface CollectionModes {
   collectionName: string;
   collectionId: string;
-  modes: Array<{ id: string; name: string }>;
+  dataAttribute?: string;                                // e.g. "data-theme"; multi-mode collections only
+  modes: Array<{ id: string; name: string; value: string }>;  // value: the attribute value, e.g. "dark"
   activeMode: string;                                    // mode currently applied to the component
   tokens: Record<string, Record<string, string>>;       // tokenName → { modeName: resolvedValue }
+  cssVars: Record<string, string>;                      // tokenName → CSS variable, e.g. "--accent-fill"
 }
 
 interface ComponentBundle {

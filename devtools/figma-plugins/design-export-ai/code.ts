@@ -297,13 +297,41 @@ function figmaPropToCSSProp(figmaProp: string): string {
   return map[figmaProp] ?? figmaProp;
 }
 
-// Convert a token path like "ds-utils/gap" → CSS custom property "--ds-utils-gap"
-function tokenNameToCssVar(name: string): string {
-  const cleaned = name
-    .replace(/[\s/]+/g, "-")
-    .replace(/[^a-zA-Z0-9-]/g, "")
-    .toLowerCase();
-  return `var(--${cleaned})`;
+// CSS custom property name for a Figma variable. Must stay identical to
+// cssVarName in ../token-export/code.ts, which defines these variables;
+// ../check-naming-sync.cjs fails when the two drift. Web code syntax wins,
+// otherwise the path is slugged with every other character turned into a dash.
+function cssVarName(v: Variable): string {
+  const web = v.codeSyntax ? (v.codeSyntax as Record<string, string>).WEB : undefined;
+  if (web) {
+    // Accept both `var(--name)` and a bare `--name`.
+    const m = web.match(/var\(\s*(--[^,\s)]+)/) || web.match(/^\s*(--[A-Za-z0-9_-]+)\s*$/);
+    if (m) return m[1];
+  }
+  return "--" + v.name.toLowerCase()
+    .replace(/\//g, "-").replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+// Slug for mode attributes: data-<collection>="<mode>". Must stay identical to
+// slugify in ../token-export/code.ts (also checked by ../check-naming-sync.cjs).
+function slugify(str: string): string {
+  return str.toLowerCase().trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+// Class token-export's typography.css gives a text style. Must stay identical
+// to textStyleClassName in ../token-export/code.ts (checked by
+// ../check-naming-sync.cjs).
+function textStyleClassName(name: string): string {
+  return "text-" + name.toLowerCase()
+    .replace(/\//g, "-").replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 // Extract the "AI Metadata:" block from a component description, stripping designer notes.
@@ -586,10 +614,13 @@ async function extractInlineTokenCSS(node: SceneNode): Promise<Record<string, st
     const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
     const modeId = collection?.defaultModeId;
     const rawValue = modeId ? variable.valuesByMode[modeId] : undefined;
-    const cssPropKebab = figmaPropToCSSProp(prop);              // kebab-case for withUnit logic
+    // A text node's fill is its text colour, which extractCSS writes to `color`.
+    const cssPropKebab = prop === "fills" && node.type === "TEXT"
+      ? "color"
+      : figmaPropToCSSProp(prop);                               // kebab-case for withUnit logic
     const cssProp      = kebabToCamel(cssPropKebab);            // camelCase to match NodeCSS keys
     const resolved = await resolveTokenValue(rawValue, variable.resolvedType);
-    const cssVarBase = tokenNameToCssVar(variable.name).slice(0, -1); // "var(--name"
+    const cssVarBase = `var(${cssVarName(variable)}`; // "var(--name"
     result[cssProp] = `${cssVarBase}, ${withUnit(resolved, cssPropKebab)})`;
   }
 
@@ -630,7 +661,7 @@ async function buildFillsArray(node: SceneNode): Promise<FillEntry[]> {
     if (binding?.id) {
       const variable = await figma.variables.getVariableByIdAsync(binding.id);
       if (variable) {
-        const cssVarBase = tokenNameToCssVar(variable.name).slice(0, -1); // "var(--name"
+        const cssVarBase = `var(${cssVarName(variable)}`; // "var(--name"
         value = `${cssVarBase}, ${value})`;
       }
     }
@@ -706,6 +737,17 @@ async function buildTree(
 
   if (node.type === "TEXT") {
     simpleNode.characters = node.characters;
+
+    // One text style across the whole node maps to a single typography class.
+    // Mixed styles are left to textRanges below.
+    if (typeof node.textStyleId === "string" && node.textStyleId) {
+      try {
+        const style = await figma.getStyleByIdAsync(node.textStyleId);
+        if (style) simpleNode.textClass = textStyleClassName(style.name);
+      } catch (_) {
+        // Style not readable (e.g. a remote library): omit the class.
+      }
+    }
 
     // Mixed text styles — emit per-range breakdown
     if (node.characters.length > 0 && "getStyledTextSegments" in node) {
@@ -1054,9 +1096,13 @@ async function buildComponentBundle(
       variableModes[cName] = {
         collectionName: cName,
         collectionId: collection.id,
-        modes: collection.modes.map((m) => ({ id: m.modeId, name: m.name })),
+        // token-export only scopes multi-mode collections to an attribute;
+        // single-mode ones sit on :root.
+        ...(collection.modes.length > 1 ? { dataAttribute: `data-${slugify(cName)}` } : {}),
+        modes: collection.modes.map((m) => ({ id: m.modeId, name: m.name, value: slugify(m.name) })),
         activeMode: activeModeName,
         tokens: {},
+        cssVars: {},
       };
     }
 
@@ -1070,6 +1116,7 @@ async function buildComponentBundle(
     }
 
     variableModes[cName].tokens[variable.name] = resolutions;
+    variableModes[cName].cssVars[variable.name] = cssVarName(variable);
   }
 
   const png = options.includePNG ? await exportPNG(root as SceneNode) : null;
